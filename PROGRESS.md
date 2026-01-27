@@ -297,35 +297,35 @@
 
 ### 3.1 - eq_slider.py
 
-- [ ] **UI.1.1** - Implementar `EQSlider.__init__()`
+- [✅] **UI.1.1** - Implementar `EQSlider.__init__()`
   - Criar widget GTK4 (Gtk.Box)
   - Adicionar label com frequência
   - Adicionar Gtk.Scale vertical com range -12 a +12
   - Adicionar label com valor em dB
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 15 minutos
 
-- [ ] **UI.1.2** - Implementar `EQSlider.get_value()`
+- [✅] **UI.1.2** - Implementar `EQSlider.get_value()`
   - Retornar valor atual do scale
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 2 minutos
 
-- [ ] **UI.1.3** - Implementar `EQSlider.set_value()`
+- [✅] **UI.1.3** - Implementar `EQSlider.set_value()`
   - Setar valor do scale
   - Atualizar label de valor
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 5 minutos
 
-- [ ] **UI.1.4** - Implementar colorização dinâmica
+- [✅] **UI.1.4** - Implementar colorização dinâmica
   - Verde se gain > 0
   - Azul se gain < 0
   - Cinza se gain = 0
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 10 minutos
 
-- [ ] **UI.1.5** - Implementar `connect_value_changed()`
+- [✅] **UI.1.5** - Implementar `connect_value_changed()`
   - Conectar sinal "value-changed" a callback
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 5 minutos
 
 - [ ] **Commit** - "feat: implement EQSlider custom widget"
@@ -334,70 +334,70 @@
 
 ### 3.2 - main_window.py
 
-- [ ] **UI.2.1** - Implementar `MainWindow.__init__()`
+- [✅] **UI.2.1** - Implementar `MainWindow.__init__()`
   - Herdar de `Adw.ApplicationWindow`
   - Inicializar managers (config, pipewire, preset)
   - Chamar `setup_ui()`
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 10 minutos
 
-- [ ] **UI.2.2** - Implementar `MainWindow.setup_ui()`
+- [✅] **UI.2.2** - Implementar `MainWindow.setup_ui()`
   - Criar grid/box layout
   - Criar 10 EQSlider widgets
   - Criar dropdown de presets
   - Criar botões (Load, Save, Delete, Reset)
   - Criar status bar
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 30 minutos
 
-- [ ] **UI.2.3** - Implementar `MainWindow.on_slider_changed()`
+- [✅] **UI.2.3** - Implementar `MainWindow.on_slider_changed()`
   - Capturar valor do slider
   - Escrever em config
   - Gerar arquivo PipeWire
   - **Threading:** Usar `threading.Thread` para reload
   - **Thread-Safe UI:** Usar `GLib.idle_add()` para atualizar status
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 20 minutos
 
-- [ ] **UI.2.4** - Implementar `MainWindow.on_load_preset()`
+- [✅] **UI.2.4** - Implementar `MainWindow.on_load_preset()`
   - Ler preset do preset_manager
   - Atualizar sliders visualmente
   - Gerar arquivo PipeWire
   - **Threading:** Recarregar em thread
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 15 minutos
 
-- [ ] **UI.2.5** - Implementar `MainWindow.on_save_preset()`
+- [✅] **UI.2.5** - Implementar `MainWindow.on_save_preset()`
   - Abrir dialog pedindo nome
   - Validar nome
   - Chamar `preset_manager.save_preset()`
   - Recarregar dropdown
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 15 minutos
 
-- [ ] **UI.2.6** - Implementar `MainWindow.on_delete_preset()`
+- [✅] **UI.2.6** - Implementar `MainWindow.on_delete_preset()`
   - Confirmar exclusão (dialog)
   - Chamar `preset_manager.delete_preset()`
   - Recarregar dropdown
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 10 minutos
 
-- [ ] **UI.2.7** - Implementar `MainWindow.on_reset()`
+- [✅] **UI.2.7** - Implementar `MainWindow.on_reset()`
   - Resetar todos sliders para 0dB
   - Gerar arquivo PipeWire com todos 0
   - Recarregar
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 10 minutos
 
-- [ ] **UI.2.8** - Implementar `MainWindow.refresh_preset_list()`
+- [✅] **UI.2.8** - Implementar `MainWindow.refresh_preset_list()`
   - Chamar `preset_manager.list_presets()`
   - Atualizar dropdown
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 5 minutos
 
-- [ ] **UI.2.9** - Implementar `MainWindow.update_status()`
+- [✅] **UI.2.9** - Implementar `MainWindow.update_status()`
   - Atualizar status bar com mensagem
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 5 minutos
 
 - [ ] **Commit** - "feat: implement MainWindow UI and event handlers"
@@ -406,18 +406,18 @@
 
 ### 3.3 - main.py
 
-- [ ] **UI.3.1** - Implementar `SimplePipeWireEQApp`
+- [✅] **UI.3.1** - Implementar `SimplePipeWireEQApp`
   - Herdar de `Adw.Application`
   - Implementar `do_activate()`
   - Chamar `PipeWireManager.setup_initial_config()` se primeira vez
   - Criar e mostrar `MainWindow`
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 10 minutos
 
-- [ ] **UI.3.2** - Implementar `main()`
+- [✅] **UI.3.2** - Implementar `main()`
   - Criar app instance
   - Chamar `app.run(sys.argv)`
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 5 minutos
 
 - [ ] **Teste Manual:** Executar aplicação
