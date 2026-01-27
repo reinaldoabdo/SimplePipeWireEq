@@ -180,9 +180,9 @@
   - **⚠️ CUIDADO:** Isso INTERROMPE ÁUDIO. Testar com música ligada para verificar.
   - **Estimativa:** 10 minutos
 
-- [ ] **Core.3.5** - Implementar `PipeWireManager.parse_preset_file()`
+- [✅] **Core.3.5** - Implementar `PipeWireManager.parse_preset_file()`
   - Fazer regex para extrair freq e gain de arquivo Lua
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     # Criar arquivo Lua com filtros
@@ -211,15 +211,15 @@
 
 ### 2.4 - preset_manager.py
 
-- [ ] **Core.4.1** - Implementar `PresetManager.__init__()`
+- [✅] **Core.4.1** - Implementar `PresetManager.__init__()`
   - Carregar lista de presets em cache
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 5 minutos
 
-- [ ] **Core.4.2** - Implementar `PresetManager.list_presets()`
+- [✅] **Core.4.2** - Implementar `PresetManager.list_presets()`
   - Varrer `~/.config/pipewire/*.conf` (exceto `temp.conf` e `99-simplepipewireq.conf`)
   - Retornar lista de nomes sem extensão
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     from simplepipewireq.core.preset_manager import PresetManager
@@ -229,10 +229,10 @@
     ```
   - **Estimativa:** 10 minutos
 
-- [ ] **Core.4.3** - Implementar `PresetManager.validate_preset_name()`
+- [✅] **Core.4.3** - Implementar `PresetManager.validate_preset_name()`
   - Regex: `r'[^\w\s-]'` para caracteres inválidos
   - Retornar bool
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     assert pm.validate_preset_name("Meu Rock") == True
@@ -241,11 +241,11 @@
     ```
   - **Estimativa:** 5 minutos
 
-- [ ] **Core.4.4** - Implementar `PresetManager.save_preset()`
+- [✅] **Core.4.4** - Implementar `PresetManager.save_preset()`
   - Validar nome
   - Gerar arquivo `.conf` em `~/.config/pipewire/`
   - Atualizar cache
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     gains = {60: 1.0, 150: 0.5, ...}
@@ -255,11 +255,11 @@
     ```
   - **Estimativa:** 10 minutos
 
-- [ ] **Core.4.5** - Implementar `PresetManager.delete_preset()`
+- [✅] **Core.4.5** - Implementar `PresetManager.delete_preset()`
   - Deletar arquivo de preset
   - Atualizar cache
   - Retornar bool
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     pm.save_preset("ToDelete", gains)
@@ -270,11 +270,11 @@
     ```
   - **Estimativa:** 10 minutos
 
-- [ ] **Core.4.6** - Implementar `PresetManager.get_preset_gains()`
+- [✅] **Core.4.6** - Implementar `PresetManager.get_preset_gains()`
   - Ler arquivo de preset
   - Chamar `PipeWireManager.parse_preset_file()`
   - Retornar dict de ganhos
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     gains = pm.get_preset_gains("TestBass")
@@ -283,10 +283,10 @@
     ```
   - **Estimativa:** 5 minutos
 
-- [ ] **Core.4.7** - Teste Unitário: test_preset_manager.py
+- [✅] **Core.4.7** - Teste Unitário: test_preset_manager.py
   - Executar `pytest tests/test_preset_manager.py`
   - Deve passar 100%
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 10 minutos
 
 - [ ] **Commit** - "feat: implement PresetManager for CRUD operations"
