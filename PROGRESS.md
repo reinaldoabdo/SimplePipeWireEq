@@ -85,7 +85,7 @@
 - [ ] **Core.2.1** - Implementar `ConfigManager.__init__()`
   - Criar diretório `~/.config/pipewire/` se não existir
   - **Arquivo:** `src/simplepipewireq/core/config_manager.py`
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     from simplepipewireq.core.config_manager import ConfigManager
@@ -97,7 +97,7 @@
 - [ ] **Core.2.2** - Implementar `ConfigManager.write_config()`
   - Escrever dict em arquivo INI
   - Formato: `[equalizer]\ngain_60hz = 0.0\n...`
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     gains = {60: 0.0, 150: 1.5, ...}
@@ -108,7 +108,7 @@
 
 - [ ] **Core.2.3** - Implementar `ConfigManager.read_config()`
   - Ler arquivo INI e retornar dict
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     gains = cm.read_config("test.conf")
@@ -119,7 +119,7 @@
 
 - [ ] **Core.2.4** - Implementar `ConfigManager.validate_gain()`
   - Validar se -12.0 <= gain <= 12.0
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     assert cm.validate_gain(0.0) == True
@@ -131,7 +131,7 @@
 - [ ] **Core.2.5** - Teste Unitário: test_config_manager.py
   - Executar `pytest tests/test_config_manager.py`
   - Deve passar 100%
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 10 minutos
 
 - [ ] **Commit** - "feat: implement ConfigManager for INI file handling"
