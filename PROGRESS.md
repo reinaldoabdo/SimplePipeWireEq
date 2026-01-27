@@ -437,36 +437,36 @@
 
 ## Fase 4: Packaging e Documentação
 
-- [ ] **Package.1** - Finalizar `requirements.txt`
+- [✅] **Package.1** - Finalizar `requirements.txt`
   ```
   gtk4>=4.10.0
   PyGObject>=3.46.0
   libadwaita>=1.3.0
   ```
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 2 minutos
 
-- [ ] **Package.2** - Finalizar `setup.py`
+- [✅] **Package.2** - Finalizar `setup.py`
   - Name: simplepipewireq
   - Version: 1.0.0
   - Entry point: `simplepipewireq = simplepipewireq.main:main`
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 10 minutos
 
-- [ ] **Package.3** - Finalizar `.gitignore`
+- [✅] **Package.3** - Finalizar `.gitignore`
   - Python: `__pycache__/`, `*.pyc`, `*.egg-info/`
   - Vim: `.swp`, `.swo`
   - OS: `.DS_Store`
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 2 minutos
 
-- [ ] **Package.4** - Escrever README.md completo
+- [✅] **Package.4** - Escrever README.md completo
   - Descrição
   - Requisitos
   - Instalação
   - Uso
   - Troubleshooting
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 20 minutos
 
 - [ ] **Commit** - "docs: finalize packaging and documentation"
