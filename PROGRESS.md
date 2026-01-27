@@ -140,14 +140,14 @@
 
 ### 2.3 - pipewire_manager.py
 
-- [ ] **Core.3.1** - Implementar `PipeWireManager.__init__()`
+- [✅] **Core.3.1** - Implementar `PipeWireManager.__init__()`
   - Apenas inicializar logging
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Estimativa:** 2 minutos
 
-- [ ] **Core.3.2** - Implementar `PipeWireManager.is_configured()`
+- [✅] **Core.3.2** - Implementar `PipeWireManager.is_configured()`
   - Verificar se `99-simplepipewireq.conf` existe
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     from simplepipewireq.core.pipewire_manager import PipeWireManager
@@ -157,10 +157,10 @@
     ```
   - **Estimativa:** 5 minutos
 
-- [ ] **Core.3.3** - Implementar `PipeWireManager.generate_pipewire_config()`
+- [✅] **Core.3.3** - Implementar `PipeWireManager.generate_pipewire_config()`
   - Gerar arquivo Lua válido
   - Seguir template exatamente do INTEGRATION_GUIDE
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste Manual:**
     ```bash
     cat ~/.config/pipewire/pipewire.conf.d/99-simplepipewireq.conf
@@ -169,9 +169,9 @@
     ```
   - **Estimativa:** 15 minutos
 
-- [ ] **Core.3.4** - Implementar `PipeWireManager.reload_config()`
+- [✅] **Core.3.4** - Implementar `PipeWireManager.reload_config()`
   - Executar `systemctl --user restart pipewire` com timeout=5
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste Manual:**
     ```bash
     systemctl --user is-active pipewire
@@ -192,11 +192,11 @@
     ```
   - **Estimativa:** 15 minutos
 
-- [ ] **Core.3.6** - Implementar `PipeWireManager.setup_initial_config()`
+- [✅] **Core.3.6** - Implementar `PipeWireManager.setup_initial_config()`
   - Chamar `generate_pipewire_config()` com todos 0dB
   - Chamar `reload_config()`
   - Retornar bool de sucesso
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste:**
     ```python
     success = pm.setup_initial_config()
