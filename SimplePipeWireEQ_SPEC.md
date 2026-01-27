@@ -1,4 +1,4 @@
-# SimplePipeWireEQ - Especificação Detalhada do Projeto
+# SimplePipeWireEQ - Especificação Completa do Projeto
 
 ## 1. VISÃO GERAL
 
@@ -15,7 +15,7 @@
 - **Layout:** Minimalista e intuitivo
 - **10 Sliders:** Um para cada banda de frequência
 - **Display de valores:** Mostrar ganho em dB ao lado de cada slider
-- **Botão Play/Pause:** Para testar som enquanto ajusta (opcional, requer player padrão)
+- **Botão Play/Pause:** Para testar som enquanto ajusta (opcional)
 - **Select de Presets:** Dropdown com presets salvos
 - **Botões de Ação:** 
   - "Salvar Preset" (salva com nome customizado)
@@ -25,7 +25,6 @@
 - **Status Bar:** Mostra último preset carregado/salvo e status da recarga
 
 ### 2.2 Bandas de Frequência (10 Canais)
-As 10 bandas devem cobrir o espectro de frequência comum em players MP3:
 
 | # | Frequência | Tipo | Uso |
 |---|-----------|------|-----|
@@ -43,8 +42,7 @@ As 10 bandas devem cobrir o espectro de frequência comum em players MP3:
 **Características dos Sliders:**
 - Range: -12dB a +12dB
 - Step: 0.5dB
-- Formato visual: Vertical ou Horizontal (design choice)
-- Cor: Virar verde quando > 0dB, vermelho quando < 0dB (opcional)
+- Cor: Verde quando > 0dB, Azul quando < 0dB, Cinza quando = 0dB
 
 ---
 
@@ -55,25 +53,26 @@ SimplePipeWireEQ/
 ├── README.md
 ├── requirements.txt
 ├── setup.py
+├── .gitignore
 ├── src/
 │   └── simplepipewireq/
 │       ├── __init__.py
-│       ├── main.py                 # Entry point
+│       ├── main.py
 │       ├── ui/
 │       │   ├── __init__.py
-│       │   ├── main_window.py      # Classe da janela principal
-│       │   ├── eq_slider.py        # Widget customizado para slider EQ
-│       │   └── preset_manager_ui.py # Diálogos de preset
+│       │   ├── main_window.py
+│       │   ├── eq_slider.py
+│       │   └── preset_manager_ui.py
 │       ├── core/
 │       │   ├── __init__.py
-│       │   ├── config_manager.py   # Gerenciamento de arquivos .conf
-│       │   ├── pipewire_manager.py # Comunicação com PipeWire
-│       │   └── preset_manager.py   # Lógica de presets
+│       │   ├── config_manager.py
+│       │   ├── pipewire_manager.py
+│       │   └── preset_manager.py
 │       └── utils/
 │           ├── __init__.py
-│           └── constants.py         # Constantes (frequências, paths, etc)
+│           └── constants.py
 ├── data/
-│   ├── com.github.simplepipewireq.desktop  # Desktop entry
+│   ├── com.github.simplepipewireq.desktop
 │   └── icons/
 │       └── simplepipewireq.svg
 └── tests/
@@ -86,60 +85,86 @@ SimplePipeWireEQ/
 
 ## 4. FLUXO DE DADOS
 
-### 4.1 Fluxo de Ajuste em Tempo Real
+### 4.1 Primeira Inicialização
 
 ```
-User Moves Slider
+App inicia
     ↓
-eq_slider.py (widget) emite sinal "value-changed"
+PipeWireManager.is_configured() → False
     ↓
-main_window.py captura sinal
+PipeWireManager.setup_initial_config()
+    ├─ gera ~/.config/pipewire/pipewire.conf.d/99-simplepipewireq.conf
+    ├─ com todos ganhos em 0dB
+    └─ executa systemctl --user restart pipewire
     ↓
-config_manager.py escreve valores em ~/.config/pipewire/temp.conf
+Dialog: "Configuração inicial concluída!"
     ↓
-pipewire_manager.py chama systemctl --user restart pipewire
-    ↓
-PipeWire recarrega filtros com novos valores
-    ↓
-User ouve mudança (com breve clique de ~100-200ms)
-    ↓
-Status bar atualiza com timestamp
+App inicia normal
 ```
 
-### 4.2 Fluxo de Salvamento de Preset
+### 4.2 Fluxo de Ajuste em Tempo Real
+
+```
+User Move Slider
+    ↓
+eq_slider.py emite sinal "value-changed"
+    ↓
+MainWindow.on_slider_changed() é chamado
+    ↓
+config_manager.write_config("temp.conf", gains_dict)
+    ↓
+pipewire_manager.generate_pipewire_config(gains_dict)
+    ├─ atualiza ~/.config/pipewire/pipewire.conf.d/99-simplepipewireq.conf
+    └─ com novos valores
+    ↓
+threading.Thread(pipewire_manager.reload_config())
+    ├─ executa: systemctl --user restart pipewire
+    └─ user ouve mudança (~100-200ms depois)
+    ↓
+GLib.idle_add(update_status, "Ajuste em tempo real...")
+```
+
+### 4.3 Fluxo de Salvamento de Preset
 
 ```
 User clica "Salvar Preset"
     ↓
-Dialog pede nome do preset (ex: "Meu Pop Rock")
+Dialog pede nome: "Meu Pop Rock"
     ↓
-preset_manager.py valida nome (sem caracteres inválidos)
+preset_manager.validate_preset_name() → valida
     ↓
-config_manager.py copia temp.conf → ~/.config/pipewire/MeuPopRock.conf
+preset_manager.save_preset("MeuPopRock", gains_dict)
+    ├─ cria ~/.config/pipewire/MeuPopRock.conf
+    └─ com configuração atual
     ↓
-preset_manager.py atualiza lista de presets em memória
+preset_manager.list_presets() → recarrega cache
     ↓
-main_window.py recarrega dropdown de presets
+MainWindow.refresh_preset_list()
+    └─ "Meu Pop Rock" aparece no dropdown
     ↓
-Status bar mostra "Preset 'Meu Pop Rock' salvo com sucesso"
+Status bar: "Preset 'Meu Pop Rock' salvo com sucesso"
 ```
 
-### 4.3 Fluxo de Carregamento de Preset
+### 4.4 Fluxo de Carregamento de Preset
 
 ```
 User seleciona preset no dropdown
     ↓
-main_window.py captura seleção
+MainWindow.on_load_preset("MeuPopRock")
     ↓
-config_manager.py lê arquivo ~/.config/pipewire/PresetName.conf
+preset_manager.get_preset_gains("MeuPopRock")
+    └─ lê ~/.config/pipewire/MeuPopRock.conf
     ↓
-Extrai valores de ganho para cada frequência
+parse_preset_file() extrai gains
+    └─ retorna {60: 0.5, 150: -1.0, ...}
     ↓
-main_window.py atualiza todos os 10 sliders visualmente
+MainWindow atualiza visualmente 10 sliders
     ↓
-config_manager.py copia preset → temp.conf
+config_manager.write_config("temp.conf", gains_dict)
     ↓
-pipewire_manager.py dispara reload
+pipewire_manager.generate_pipewire_config(gains_dict)
+    ↓
+threading.Thread(pipewire_manager.reload_config())
     ↓
 User ouve o preset carregado
 ```
@@ -148,228 +173,148 @@ User ouve o preset carregado
 
 ## 5. ARQUIVOS DE CONFIGURAÇÃO
 
-### 5.1 Estrutura do temp.conf (e presets salvos)
+### 5.1 Arquivo Temporário (temp.conf)
+
+**Localização:** `~/.config/pipewire/temp.conf`
+
+**Formato:** INI simples
 
 ```ini
 # SimplePipeWireEQ - Configuração Temporária
 # Gerada automaticamente pela aplicação
 
 [equalizer]
-# Banda 1: 60 Hz
 gain_60hz = 0.0
-
-# Banda 2: 150 Hz
 gain_150hz = 0.0
-
-# Banda 3: 400 Hz
 gain_400hz = 0.0
-
-# Banda 4: 1 kHz
 gain_1khz = 0.0
-
-# Banda 5: 2.5 kHz
 gain_2_5khz = 0.0
-
-# Banda 6: 4 kHz
 gain_4khz = 0.0
-
-# Banda 7: 8 kHz
 gain_8khz = 0.0
-
-# Banda 8: 12 kHz
 gain_12khz = 0.0
-
-# Banda 9: 16 kHz
 gain_16khz = 0.0
-
-# Banda 10: 20 kHz
 gain_20khz = 0.0
 ```
 
-**Localização:**
-- Temporário: `~/.config/pipewire/temp.conf`
-- Presets salvos: `~/.config/pipewire/<NomePreset>.conf`
+### 5.2 Arquivo de Configuração PipeWire
 
-### 5.2 Integração com PipeWire
+**Localização:** `~/.config/pipewire/pipewire.conf.d/99-simplepipewireq.conf`
 
-O arquivo .conf será utilizado pelo PipeWire para carregar os filtros.  
-A aplicação **não modifica** a configuração principal do PipeWire, apenas gerencia seus próprios arquivos.
+**Formato:** Lua (nativo do PipeWire)
+
+Exemplo com ganhos reais:
+
+```lua
+# SimplePipeWireEQ - Configuração de Equalizador Paramétrico
+# Gerada automaticamente pela aplicação
+
+context.modules = [
+    {
+        name = libpipewire-module-filter-chain
+        args = {
+            node.description = "SimplePipeWireEQ Equalizer Sink"
+            media.name = "SimplePipeWireEQ Equalizer Sink"
+            filter.graph = {
+                nodes = [
+                    {
+                        type = builtin
+                        name = eq
+                        label = param_eq
+                        config = {
+                            filters = [
+                                { type = bq_peaking, freq = 60, gain = 0.0, q = 0.707 },
+                                { type = bq_peaking, freq = 150, gain = 2.5, q = 0.707 },
+                                { type = bq_peaking, freq = 400, gain = -1.0, q = 0.707 },
+                                { type = bq_peaking, freq = 1000, gain = 0.0, q = 0.707 },
+                                { type = bq_peaking, freq = 2500, gain = 1.5, q = 0.707 },
+                                { type = bq_peaking, freq = 4000, gain = 0.0, q = 0.707 },
+                                { type = bq_peaking, freq = 8000, gain = -0.5, q = 0.707 },
+                                { type = bq_peaking, freq = 12000, gain = 3.0, q = 0.707 },
+                                { type = bq_peaking, freq = 16000, gain = 0.0, q = 0.707 },
+                                { type = bq_peaking, freq = 20000, gain = 1.0, q = 0.707 }
+                            ]
+                        }
+                    }
+                ]
+                links = []
+            }
+            capture.props = {
+                node.name = "effect_input.simplepipewireq"
+                media.class = "Audio/Sink"
+                audio.channels = 2
+                audio.position = [ FL FR ]
+            }
+            playback.props = {
+                node.name = "effect_output.simplepipewireq"
+                node.passive = true
+                audio.channels = 2
+                audio.position = [ FL FR ]
+            }
+        }
+    }
+]
+```
+
+### 5.3 Arquivo de Preset Salvo
+
+**Localização:** `~/.config/pipewire/<NomePreset>.conf`
+
+**Formato:** Lua (idêntico ao 99-simplepipewireq.conf, apenas com valores salvos)
+
+Exemplo: `~/.config/pipewire/MeuRock.conf`
 
 ---
 
 ## 6. MÓDULOS E RESPONSABILIDADES
 
-### 6.1 `main.py`
-- Inicializa aplicação GTK
-- Cria janela principal
-- Gerencia ciclo de vida da aplicação
-- Função `main()` é o entry point
+### 6.1 main.py
+
+Entry point da aplicação. Cria e executa a aplicação GTK.
 
 ```python
+import sys
+import logging
+from gi.repository import Adw
+from simplepipewireq.ui.main_window import MainWindow
+
+logger = logging.getLogger(__name__)
+
+class SimplePipeWireEQApp(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id="com.github.simplepipewireq")
+        
+    def do_activate(self):
+        """Ativado quando app é iniciado"""
+        # Verificar e configurar PipeWire se necessário
+        from simplepipewireq.core.pipewire_manager import PipeWireManager
+        pw_manager = PipeWireManager()
+        
+        if not pw_manager.is_configured():
+            logger.info("Configuração inicial não encontrada, criando...")
+            if not pw_manager.setup_initial_config():
+                logger.error("Falha ao configurar PipeWire")
+                # Dialog de erro
+        
+        window = MainWindow(self)
+        window.present()
+
 def main():
     """Entry point da aplicação"""
     app = SimplePipeWireEQApp()
     return app.run(sys.argv)
+
+if __name__ == "__main__":
+    main()
 ```
 
-### 6.2 `main_window.py` - Classe `MainWindow`
-**Responsabilidades:**
-- Construir interface GTK (layout, widgets)
-- Gerenciar estado visual (sliders, labels, dropdown)
-- Conectar sinais de widgets a métodos
-- Atualizar UI quando presets carregam
-- Coordenar chamadas para ConfigManager e PresetManager
+### 6.2 constants.py
 
-**Métodos principais:**
+Armazena todas as constantes da aplicação.
+
 ```python
-class MainWindow:
-    def __init__(self):
-        """Inicializa janela e widgets"""
-    
-    def setup_ui(self):
-        """Cria layout GTK com 10 sliders"""
-    
-    def on_slider_changed(self, slider, band_index):
-        """Callback quando slider é movido"""
-        # Atualiza temp.conf
-        # Recarrega PipeWire
-        # Atualiza display de valor
-    
-    def on_load_preset(self, preset_name):
-        """Carrega preset selecionado"""
-        # Lê arquivo do preset
-        # Atualiza sliders visualmente
-        # Escreve em temp.conf
-        # Recarrega PipeWire
-    
-    def on_save_preset(self, preset_name):
-        """Abre dialog para salvar preset com nome"""
-    
-    def on_reset(self):
-        """Reseta todos sliders para 0dB"""
-    
-    def on_delete_preset(self, preset_name):
-        """Deleta preset do filesystem"""
-    
-    def refresh_preset_list(self):
-        """Recarrega dropdown de presets"""
-    
-    def update_status(self, message):
-        """Atualiza status bar"""
-```
+import os
+from pathlib import Path
 
-### 6.3 `config_manager.py` - Classe `ConfigManager`
-**Responsabilidades:**
-- Ler/escrever arquivos .conf (temp.conf e presets)
-- Validar valores de ganho (-12dB a +12dB)
-- Garantir existência de diretório `~/.config/pipewire/`
-- Parse de valores para float
-
-**Métodos principais:**
-```python
-class ConfigManager:
-    def __init__(self):
-        """Inicializa, cria diretório se não existir"""
-    
-    def read_config(self, filename):
-        """Lê arquivo .conf e retorna dict com ganhos"""
-        # Retorna: {60: 0.0, 150: 0.5, ...}
-    
-    def write_config(self, filename, gains_dict):
-        """Escreve dict de ganhos em arquivo .conf"""
-        # gains_dict = {60: 0.0, 150: 0.5, ...}
-    
-    def validate_gain(self, value):
-        """Valida se gain está entre -12 e +12"""
-    
-    def get_temp_config_path(self):
-        """Retorna ~/.config/pipewire/temp.conf"""
-    
-    def get_preset_path(self, preset_name):
-        """Retorna ~/.config/pipewire/<PresetName>.conf"""
-```
-
-### 6.4 `pipewire_manager.py` - Classe `PipeWireManager`
-**Responsabilidades:**
-- Executar comando de reload do PipeWire
-- Verificar se PipeWire está rodando
-- Capturar erros de comunicação
-- Log de operações
-
-**Métodos principais:**
-```python
-class PipeWireManager:
-    def reload_config(self):
-        """Executa: systemctl --user restart pipewire"""
-        # Captura stderr/stdout
-        # Retorna True se sucesso, False se falha
-    
-    def is_pipewire_running(self):
-        """Verifica se PipeWire está ativo"""
-        # Executa: systemctl --user is-active pipewire
-    
-    def handle_reload_error(self, error):
-        """Trata erros de reload gracefully"""
-```
-
-### 6.5 `preset_manager.py` - Classe `PresetManager`
-**Responsabilidades:**
-- Listar presets disponíveis
-- Validar nomes de presets
-- Copiar/deletar arquivos de preset
-- Gerenciar metadata (lista em cache)
-
-**Métodos principais:**
-```python
-class PresetManager:
-    def __init__(self):
-        """Inicializa e carrega lista de presets"""
-    
-    def list_presets(self):
-        """Retorna lista de nomes de presets disponíveis"""
-        # Varre ~/.config/pipewire/*.conf (exceto temp.conf)
-    
-    def validate_preset_name(self, name):
-        """Valida nome (sem /, \, etc)"""
-    
-    def save_preset(self, name, gains_dict):
-        """Salva novo preset"""
-        # Escreve arquivo
-        # Atualiza cache
-    
-    def delete_preset(self, name):
-        """Deleta arquivo de preset"""
-    
-    def get_preset_gains(self, name):
-        """Retorna dict de ganhos de um preset"""
-```
-
-### 6.6 `eq_slider.py` - Classe `EQSlider`
-**Responsabilidades:**
-- Widget customizado GTK4 para slider EQ
-- Emitir sinais quando valor muda
-- Exibir valor em dB
-- Colorir conforme valor (verde/red)
-
-**Métodos principais:**
-```python
-class EQSlider(Gtk.Box):
-    def __init__(self, frequency, min_val=-12, max_val=12):
-        """Cria slider com label de frequência e valor"""
-    
-    def get_value(self):
-        """Retorna valor atual em dB"""
-    
-    def set_value(self, value):
-        """Define valor em dB"""
-    
-    def connect_value_changed(self, callback):
-        """Conecta callback para mudanças"""
-```
-
-### 6.7 `constants.py`
-**Armazena:**
-```python
 # Frequências dos 10 canais
 FREQUENCIES = [60, 150, 400, 1000, 2500, 4000, 8000, 12000, 16000, 20000]
 
@@ -379,163 +324,316 @@ MAX_GAIN = 12.0
 GAIN_STEP = 0.5
 
 # Paths
-CONFIG_DIR = os.path.expanduser("~/.config/pipewire")
-TEMP_CONF = os.path.join(CONFIG_DIR, "temp.conf")
+HOME_DIR = Path.home()
+CONFIG_DIR = HOME_DIR / ".config" / "pipewire"
+PIPEWIRE_CONF_DIR = CONFIG_DIR / "pipewire.conf.d"
+TEMP_CONF = CONFIG_DIR / "temp.conf"
+PIPEWIRE_CONFIG_FILE = PIPEWIRE_CONF_DIR / "99-simplepipewireq.conf"
 
 # Comandos
 PIPEWIRE_RELOAD_CMD = ["systemctl", "--user", "restart", "pipewire"]
 PIPEWIRE_STATUS_CMD = ["systemctl", "--user", "is-active", "pipewire"]
 
 # UI
-WINDOW_WIDTH = 600
-WINDOW_HEIGHT = 500
+WINDOW_WIDTH = 700
+WINDOW_HEIGHT = 600
 APP_NAME = "SimplePipeWireEQ"
+APP_VERSION = "1.0.0"
+```
+
+### 6.3 config_manager.py
+
+Gerencia leitura/escrita de arquivos .conf (INI) com ganhos.
+
+**Responsabilidades:**
+- Ler/escrever temp.conf
+- Validar valores de ganho
+- Criar diretório ~/.config/pipewire/ se não existir
+
+**Métodos principais:**
+```python
+class ConfigManager:
+    def read_config(self, filename: str) -> dict:
+        """Lê arquivo .conf e retorna dict de ganhos"""
+        # Retorna: {60: 0.0, 150: 0.5, ...}
+    
+    def write_config(self, filename: str, gains_dict: dict) -> bool:
+        """Escreve dict de ganhos em arquivo .conf"""
+    
+    def validate_gain(self, value: float) -> bool:
+        """Valida se gain está entre -12 e +12"""
+    
+    def get_temp_config_path(self) -> Path:
+        """Retorna ~/.config/pipewire/temp.conf"""
+```
+
+### 6.4 pipewire_manager.py
+
+Gerencia integração com PipeWire.
+
+**Responsabilidades:**
+- Gerar arquivo Lua válido para PipeWire
+- Executar reload do PipeWire
+- Verificar se PipeWire está rodando
+- Setup inicial na primeira execução
+
+**Métodos principais:**
+```python
+class PipeWireManager:
+    def is_configured(self) -> bool:
+        """Verifica se 99-simplepipewireq.conf existe"""
+    
+    def setup_initial_config(self) -> bool:
+        """Cria configuração inicial (todos ganhos em 0dB)"""
+    
+    def generate_pipewire_config(self, gains_dict: dict) -> bool:
+        """Gera arquivo Lua válido para PipeWire"""
+    
+    def reload_config(self) -> bool:
+        """Executa: systemctl --user restart pipewire"""
+    
+    def is_pipewire_running(self) -> bool:
+        """Verifica se PipeWire está ativo"""
+    
+    def parse_preset_file(self, filepath: Path) -> dict:
+        """Parse arquivo Lua para extrair ganhos"""
+```
+
+### 6.5 preset_manager.py
+
+Gerencia presets salvos.
+
+**Responsabilidades:**
+- Listar presets disponíveis
+- Validar nomes de presets
+- Salvar/deletar presets
+- Cache em memória
+
+**Métodos principais:**
+```python
+class PresetManager:
+    def list_presets(self) -> list:
+        """Retorna lista de nomes de presets"""
+    
+    def validate_preset_name(self, name: str) -> bool:
+        """Valida nome (sem caracteres inválidos)"""
+    
+    def save_preset(self, name: str, gains_dict: dict) -> bool:
+        """Salva novo preset"""
+    
+    def delete_preset(self, name: str) -> bool:
+        """Deleta preset"""
+    
+    def get_preset_gains(self, name: str) -> dict:
+        """Retorna dict de ganhos de um preset"""
+```
+
+### 6.6 main_window.py
+
+Janela principal da aplicação.
+
+**Responsabilidades:**
+- Construir interface GTK
+- Conectar sinais
+- Gerenciar estado visual
+- Coordenar lógica central
+
+**Métodos principais:**
+```python
+class MainWindow(Adw.ApplicationWindow):
+    def __init__(self, app):
+        """Inicializa janela"""
+    
+    def setup_ui(self):
+        """Cria layout com 10 sliders"""
+    
+    def on_slider_changed(self, slider, band_index):
+        """Callback quando slider é movido"""
+        # Escreve config
+        # Gera arquivo PipeWire
+        # Recarrega em thread
+    
+    def on_load_preset(self, preset_name):
+        """Carrega preset"""
+    
+    def on_save_preset(self):
+        """Abre dialog para salvar"""
+    
+    def on_reset(self):
+        """Reseta todos sliders"""
+    
+    def on_delete_preset(self, preset_name):
+        """Deleta preset"""
+    
+    def refresh_preset_list(self):
+        """Recarrega dropdown de presets"""
+    
+    def update_status(self, message: str):
+        """Atualiza status bar"""
+```
+
+### 6.7 eq_slider.py
+
+Widget customizado GTK4 para slider EQ.
+
+**Responsabilidades:**
+- Renderizar slider vertical/horizontal
+- Exibir valor em dB
+- Colorir conforme ganho
+- Emitir sinais
+
+**Métodos principais:**
+```python
+class EQSlider(Gtk.Box):
+    def __init__(self, frequency: int, min_val=-12, max_val=12):
+        """Cria slider com label e valor"""
+    
+    def get_value(self) -> float:
+        """Retorna valor em dB"""
+    
+    def set_value(self, value: float):
+        """Define valor em dB"""
+    
+    def connect_value_changed(self, callback):
+        """Conecta callback para mudanças"""
 ```
 
 ---
 
-## 7. FLUXO DE EXECUÇÃO (User Journey)
+## 7. LAYOUT UI/UX
 
-### Cenário 1: Usuário ajusta equalizador em tempo real
-
-1. App inicia, carrega último preset (ou defaults)
-2. Usuário move slider de 60Hz para +3dB
-3. `on_slider_changed()` é chamado
-4. ConfigManager escreve temp.conf com novo valor
-5. PipeWireManager executa `systemctl --user restart pipewire`
-6. PipeWire recarrega com novo filtro
-7. User ouve mudança (~100ms depois)
-8. Status bar mostra "Ajuste em tempo real"
-
-### Cenário 2: Usuário salva preset personalizado
-
-1. User ajusta vários sliders
-2. Clica "Salvar Preset"
-3. Dialog pede nome: "Meu Rock"
-4. PresetManager valida nome
-5. ConfigManager copia temp.conf → MeuRock.conf
-6. UI recarrega dropdown de presets
-7. "Meu Rock" aparece na lista
-8. Status bar: "Preset 'Meu Rock' salvo"
-
-### Cenário 3: Usuário carrega preset existente
-
-1. User clica dropdown de presets
-2. Seleciona "Meu Rock"
-3. `on_load_preset()` é chamado
-4. ConfigManager lê MeuRock.conf
-5. MainWindow atualiza visualmente todos 10 sliders
-6. ConfigManager escreve valores em temp.conf
-7. PipeWireManager recarrega PipeWire
-8. User ouve o preset
+```
+┌─────────────────────────────────────────────┐
+│ SimplePipeWireEQ                        [‾] │
+├─────────────────────────────────────────────┤
+│                                             │
+│ Preset: [▼ Meu Rock ──────────────────────] │
+│ [Load] [Save] [Delete] [Reset]             │
+│                                             │
+│ ┌──────────────────────────────────────────┐│
+│ │ 60Hz   150Hz  400Hz  1kHz   2.5kHz      ││
+│ │   │      │      │      │       │        ││
+│ │  ▲▲    ▲▲    ▼▼    ──    ▲▲   ││
+│ │  0dB   +2dB  -1dB   0dB  +1dB ││
+│ │                              ││
+│ │ 4kHz   8kHz  12kHz  16kHz  20kHz       ││
+│ │   │      │      │       │      │       ││
+│ │  ──    ▼▼    ▲▲    ──    ▲▲   ││
+│ │  0dB   -2dB  +3dB  0dB   +1dB ││
+│ └──────────────────────────────────────────┘│
+│                                             │
+│ ✓ Último preset: "Meu Rock" carregado      │
+└─────────────────────────────────────────────┘
+```
 
 ---
 
 ## 8. REQUISITOS TÉCNICOS
 
-### 8.1 Dependências Python
+### Dependências Python
 ```
 gtk4>=4.10.0
 PyGObject>=3.46.0
 libadwaita>=1.3.0
 ```
 
-### 8.2 Dependências do Sistema
+### Dependências do Sistema
 ```
 libgtk-4-1
 libadwaita-1
 gobject-introspection
 systemd (para systemctl)
-pipewire (óbvio)
+pipewire (>= 0.3.0)
+pipewire-audio ou pipewire-alsa + pipewire-pulse
 ```
 
-### 8.3 Python Version
+### Python Version
 ```
 Python >= 3.10
 ```
 
 ---
 
-## 9. TRATAMENTO DE ERROS
+## 9. FLUXO DE EXECUÇÃO (User Journey)
 
-| Cenário | Ação |
-|---------|------|
-| PipeWire não está rodando | Dialog: "PipeWire não está ativo. Inicie-o primeiro." |
-| Falha ao recarregar | Dialog: "Erro ao recarregar PipeWire. Tente novamente." |
-| Arquivo .conf corrompido | Resetar para defaults, log do erro |
-| Nome de preset inválido | Dialog: "Nome contém caracteres inválidos" |
-| Preset não encontrado | Remover da lista, avisar usuário |
+### Cenário 1: Primeira Execução
+
+1. User instala e executa SimplePipeWireEQ
+2. App verifica se `99-simplepipewireq.conf` existe
+3. Se não existe, cria com ganhos em 0dB
+4. Executa `systemctl --user restart pipewire`
+5. Dialog: "Configuração inicial concluída!"
+6. App inicia normal
+
+### Cenário 2: Ajuste em Tempo Real
+
+1. App está rodando com música tocando
+2. User move slider de 60Hz para +3dB
+3. `on_slider_changed()` é chamado
+4. ConfigManager escreve temp.conf
+5. PipeWireManager gera arquivo Lua atualizado
+6. Thread recarrega PipeWire
+7. ~100-200ms depois, user ouve mudança
+8. Status bar mostra "Ajuste em tempo real"
+
+### Cenário 3: Salvar Preset Personalizado
+
+1. User ajusta vários sliders
+2. Clica "Salvar Preset"
+3. Dialog: "Nome do preset?" → "Meu Rock"
+4. PresetManager valida nome
+5. Cria `~/.config/pipewire/MeuRock.conf`
+6. Recarrega dropdown
+7. "Meu Rock" aparece na lista
+8. Status bar: "Preset 'Meu Rock' salvo"
+
+### Cenário 4: Carregar Preset
+
+1. User abre dropdown de presets
+2. Seleciona "Meu Rock"
+3. `on_load_preset()` é chamado
+4. PresetManager lê arquivo do preset
+5. MainWindow atualiza visualmente 10 sliders
+6. PipeWireManager gera arquivo com valores
+7. Thread recarrega PipeWire
+8. User ouve o preset carregado
 
 ---
 
-## 10. DESIGN UI/UX
+## 10. TRATAMENTO DE ERROS
 
-### 10.1 Layout Proposto
-```
-┌─────────────────────────────────────────┐
-│ SimplePipeWireEQ                    [‾] │
-├─────────────────────────────────────────┤
-│                                         │
-│  Preset: [▼ Meu Rock ──────────────]   │
-│  [Load] [Save] [Delete] [Reset]        │
-│                                         │
-│  ┌───────────────────────────────────┐ │
-│  │ 60Hz   │ 150Hz  │ 400Hz  │ 1kHz   │ │
-│  │   ▲    │   ▲    │   ▲    │   ▲    │ │
-│  │  ─0dB  │  +2dB  │  -1dB  │  +3dB  │ │
-│  │   │    │   │    │   │    │   │    │ │
-│  │   ▼    │   ▼    │   ▼    │   ▼    │ │
-│  │        │        │        │        │ │
-│  │ 2.5kHz │ 4kHz   │ 8kHz   │ 12kHz  │ │
-│  │   ▲    │   ▲    │   ▲    │   ▲    │ │
-│  │  +1dB  │  -2dB  │   0dB  │  +4dB  │ │
-│  │   │    │   │    │   │    │   │    │ │
-│  │   ▼    │   ▼    │   ▼    │   ▼    │ │
-│  │        │        │        │        │ │
-│  │ 16kHz  │ 20kHz  │        │        │ │
-│  │   ▲    │   ▲    │        │        │ │
-│  │   0dB  │  +2dB  │        │        │ │
-│  │   │    │   │    │        │        │ │
-│  │   ▼    │   ▼    │        │        │ │
-│  └───────────────────────────────────┘ │
-│                                         │
-│ ✓ Último preset: "Meu Rock" carregado  │
-└─────────────────────────────────────────┘
-```
-
-### 10.2 Paleta de Cores
-- Fundo: Cinza neutro (tema do sistema)
-- Sliders em 0dB: Cinza
-- Sliders em +dB: Verde
-- Sliders em -dB: Azul ou Laranja
-- Botões: Primário (azul)
-
-### 10.3 Iconografia
-- Play icon para teste (opcional)
-- Ícone de salvamento
-- Ícone de delete (lixeira)
-- Ícone de reset (seta circular)
+| Cenário | Ação |
+|---------|------|
+| PipeWire não está rodando | Dialog: "PipeWire não está ativo. Inicie com: systemctl --user start pipewire" |
+| Falha ao gerar config | Dialog: "Erro ao gerar configuração. Tente novamente." |
+| Falha ao recarregar | Dialog: "Erro ao recarregar PipeWire. Verifique logs com: journalctl --user -u pipewire" |
+| Nome de preset inválido | Dialog: "Nome contém caracteres inválidos. Use apenas letras, números, espaços e hífen." |
+| Preset não encontrado | Remover da lista, avisar user |
+| Arquivo .conf corrompido | Resetar para defaults, log do erro |
+| Arquivo .conf com permissões erradas | Dialog: "Sem permissão para escrever em ~/.config/pipewire" |
 
 ---
 
 ## 11. TESTES UNITÁRIOS
 
-### 11.1 test_config_manager.py
+### test_config_manager.py
 ```python
 def test_read_valid_config()
 def test_write_config()
 def test_validate_gain_valid()
 def test_validate_gain_invalid()
 def test_create_config_dir_if_not_exists()
+def test_get_temp_config_path()
 ```
 
-### 11.2 test_preset_manager.py
+### test_preset_manager.py
 ```python
 def test_list_presets()
 def test_save_preset()
 def test_delete_preset()
 def test_validate_preset_name_valid()
 def test_validate_preset_name_invalid()
+def test_get_preset_gains()
 ```
 
 ---
@@ -544,56 +642,38 @@ def test_validate_preset_name_invalid()
 
 - [ ] Setup.py e estrutura de projeto
 - [ ] requirements.txt com dependências
-- [ ] constants.py com todas as constantes
+- [ ] .gitignore configurado
+- [ ] constants.py com todas constantes
 - [ ] ConfigManager leitura/escrita de .conf
+- [ ] PipeWireManager geração de Lua
 - [ ] PipeWireManager reload funcional
+- [ ] PipeWireManager setup inicial
 - [ ] PresetManager listagem e gerenciamento
 - [ ] EQSlider widget customizado
 - [ ] MainWindow layout base
 - [ ] 10 sliders conectados
 - [ ] Dropdown de presets
 - [ ] Botões (Load, Save, Delete, Reset)
+- [ ] Threading para reload
+- [ ] GLib.idle_add para UI updates
 - [ ] Callbacks conectados
 - [ ] Status bar atualizado
 - [ ] Dialogs de validação
 - [ ] Tratamento de erros
 - [ ] Testes unitários
 - [ ] Desktop entry (.desktop file)
-- [ ] README com instruções de instalação
+- [ ] README com instruções
 - [ ] Testes de UX real
 
 ---
 
 ## 13. NOTAS ADICIONAIS
 
-### 13.1 Performance
-- Reload deve ser rápido (<500ms)
-- UI não deve travar durante reload
-- Cache de presets em memória para evitar I/O constante
-
-### 13.2 Acessibilidade
-- Labels descritivos para todos widgets
-- Keyboard navigation funcional
-- Alto contraste para sliders
-
-### 13.3 Localização (i18n)
-- Preparar estrutura para tradução (não necessário inicialmente)
-- Usar gettext se implementar depois
-
-### 13.4 Integração Futura
-- Possibilidade de adicionar mais bandas de frequência
-- Possibilidade de pré-presets built-in (Pop, Rock, Jazz, etc)
-- Análise visual (spectrum analyzer)
-- Gravação de áudio para benchmark
-
----
-
-## 14. DOCUMENTAÇÃO NECESSÁRIA
-
-- README.md: Instruções de uso, instalação, requerimentos
-- CONTRIBUTING.md: Como contribuir (opcional)
-- Manual.md: Guia de uso da interface
-- API.md: Documentação das classes e métodos (opcional)
+- **Performance:** Reload deve ser rápido (<500ms total)
+- **UI Responsiva:** Nunca travar durante reload (sempre threading)
+- **Acessibilidade:** Labels descritivos, keyboard navigation
+- **Logging:** Tudo logado para debugging
+- **Thread-Safety:** Usar GLib.idle_add() para UI updates de threads
 
 ---
 
