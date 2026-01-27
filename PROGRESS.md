@@ -68,7 +68,7 @@
   - Paths: `CONFIG_DIR`, `PIPEWIRE_CONFIG_FILE`, etc
   - Comandos: `PIPEWIRE_RELOAD_CMD`, etc
   - **Arquivo:** `src/simplepipewireq/utils/constants.py`
-  - **Status:** [ ]
+  - **Status:** [✅]
   - **Teste Manual:**
     ```python
     from simplepipewireq.utils.constants import FREQUENCIES
