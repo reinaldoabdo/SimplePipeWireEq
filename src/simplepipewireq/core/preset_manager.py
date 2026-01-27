@@ -44,7 +44,7 @@ class PresetManager:
         return bool(re.match(r'^[\w\s-]+$', name))
 
     def save_preset(self, name: str, gains_dict: dict) -> bool:
-        """
+        r"""
         Salva um preset como arquivo .conf (mesmo formato que o PipeWire lê).
         Na verdade, para facilitar, vamos salvar apenas os ganhos ou o formato completo?
         O SPEC diz: "Formato: Lua (idêntico ao 99-simplepipewireq.conf, apenas com valores salvos)"
