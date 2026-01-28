@@ -231,9 +231,10 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.set_default_response("save")
         dialog.set_close_response("cancel")
         
-        def on_response(d, res, *args):
-            print(f"DEBUG: Resposta do diálogo de salvamento: {res}")
-            if res == "save":
+        def on_response(d, result):
+            response = d.choose_finish(result)
+            print(f"DEBUG: Resposta do diálogo de salvamento: {response}")
+            if response == "save":
                 name = self.preset_entry.get_text().strip()
                 print(f"DEBUG: Tentando salvar preset '{name}'")
                 if self.preset_manager.save_preset(name, self.gains):
@@ -259,8 +260,9 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.add_response("delete", "Deletar")
         dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
         
-        def on_response(d, res, *args):
-            if res == "delete":
+        def on_response(d, result):
+            response = d.choose_finish(result)
+            if response == "delete":
                 if self.preset_manager.delete_preset(name):
                     self.refresh_preset_list()
                     self.update_status(f"Preset '{name}' deletado")
