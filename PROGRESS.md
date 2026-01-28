@@ -576,4 +576,15 @@ git reset --hard <commit_hash>
 
 ---
 
+## Fase Extra: Polimento e Correções Críticas
+
+- [✅] **Fix.1** - Corrigir crash `set_titlebar` no AdwApplicationWindow
+- [✅] **Fix.2** - Corrigir `SyntaxError` (blocos try/except soltos)
+- [✅] **Fix.3** - Corrigir Sintaxe PipeWire (aspas em strings SPA-JSON)
+- [✅] **Fix.4** - Otimizar gatilho de Reload (apenas no mouse release)
+- [✅] **Fix.5** - Modernizar Dialogs (Adw.AlertDialog)
+- [✅] **Fix.6** - Adicionar Guia Visual (Adw.Banner) para seleção de Audio Sink
+
+---
+
 **Fim do Rastreamento de Progresso**
