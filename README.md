@@ -18,16 +18,20 @@ Minimalist 10-band parametric equalizer for PipeWire on Linux.
 - Python >= 3.10
 - GTK4 development libraries
 
-## Installation
-
+Standard installation:
 ```bash
-pip install -r requirements.txt
-python setup.py install
+pip install .
 ```
 
-Or run directly:
+For development (editable mode):
 ```bash
-python src/simplepipewireq/main.py
+pip install -e .
+simplepipewireq
+```
+
+Or run directly without installing:
+```bash
+PYTHONPATH=src python3 src/simplepipewireq/main.py
 ```
 
 ## Usage

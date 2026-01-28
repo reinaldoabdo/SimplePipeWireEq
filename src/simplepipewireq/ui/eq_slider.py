@@ -10,6 +10,7 @@ class EQSlider(Gtk.Box):
     """
     __gsignals__ = {
         'value-changed': (GObject.SignalFlags.RUN_FIRST, None, (float,)),
+        'input-finished': (GObject.SignalFlags.RUN_FIRST, None, (float,)),
     }
 
     def __init__(self, frequency: int):
@@ -42,6 +43,11 @@ class EQSlider(Gtk.Box):
         
         # Conecta sinal interno do scale ao nosso sinal customizado
         self.scale.connect("value-changed", self._on_scale_value_changed)
+        
+        # Detectar quando o usuário solta o mouse (GTK4 Gestures)
+        self.gesture = Gtk.GestureClick()
+        self.gesture.connect("released", self._on_released)
+        self.scale.add_controller(self.gesture)
         
         self.append(self.scale)
         
@@ -76,6 +82,10 @@ class EQSlider(Gtk.Box):
         else:
             self.scale.add_css_class("gain-neutral")
 
+    def _on_released(self, gesture, n_press, x, y):
+        """Chamado quando o botão do mouse é solto."""
+        self.emit('input-finished', self.get_value())
+
     def get_value(self) -> float:
         """Retorna o valor atual em dB."""
         return self.scale.get_value()
@@ -84,6 +94,10 @@ class EQSlider(Gtk.Box):
         """Define o valor em dB e atualiza visualmente."""
         self.scale.set_value(value)
         # O callback _on_scale_value_changed cuidará do resto
+
+    def connect_input_finished(self, callback):
+        """Helper para conectar o sinal de fim de ajuste (mouse solto)."""
+        self.connect('input-finished', lambda widget, val: callback(widget, val))
 
     def connect_value_changed(self, callback):
         """Helper para conectar o sinal de mudança de valor."""

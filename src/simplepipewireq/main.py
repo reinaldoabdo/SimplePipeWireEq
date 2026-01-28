@@ -29,27 +29,24 @@ class SimplePipeWireEQApp(Adw.Application):
         window.present()
 
     def _do_initial_setup(self):
-        # Dialog informativo se for a primeira vez
+        # Dialog informativo se for a primeira vez usando Adw.AlertDialog
         def show_dialog():
             win = self.get_active_window()
             if not win: return
             
-            dialog = Adw.MessageDialog(
-                transient_for=win,
+            dialog = Adw.AlertDialog(
                 heading="Configuração Inicial",
                 body="O SimplePipeWireEQ precisa configurar o filtro do PipeWire pela primeira vez. O áudio pode ser interrompido brevemente."
             )
             dialog.add_response("ok", "OK, entendo")
             
-            def on_response(d, res):
+            def on_response(d, res, *args):
                 if self.pw_manager.setup_initial_config():
                     logger.info("Setup inicial concluído")
                 else:
                     logger.error("Falha no setup inicial")
-                d.destroy()
                 
-            dialog.connect("response", on_response)
-            dialog.present()
+            dialog.choose(win, None, on_response)
             
         GLib.idle_add(show_dialog)
 

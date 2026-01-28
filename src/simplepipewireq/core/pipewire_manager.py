@@ -61,18 +61,18 @@ class PipeWireManager:
                 # Formatar ganho como float com 1 casa decimal
                 gain_str = f"{gain:.1f}"
                 filters_lua.append(
-                    f"{{ type = bq_peaking, freq = {freq}, gain = {gain_str}, q = 0.707 }}"
+                    f'{{ type = "bq_peaking", freq = {freq}, gain = {gain_str}, q = 0.707 }}'
                 )
             
             filters_str = ",\n                                ".join(filters_lua)
             
-            # Template Lua
-            lua_content = f"""# SimplePipeWireEQ - Configuração de Equalizador Paramétrico
-# Gerada automaticamente pela aplicação
+            # Template Lua (SPA-JSON format)
+            lua_content = f"""// SimplePipeWireEQ - Configuração de Equalizador Paramétrico
+// Gerada automaticamente pela aplicação
 
 context.modules = [
     {{
-        name = libpipewire-module-filter-chain
+        name = "libpipewire-module-filter-chain"
         args = {{
             node.description = "SimplePipeWireEQ Equalizer Sink"
             media.name = "SimplePipeWireEQ Equalizer Sink"
@@ -119,14 +119,14 @@ context.modules = [
             logger.error(f"Erro ao gerar config PipeWire: {e}")
             return False
 
-    def reload_config(self) -> bool:
+    def reload_pipewire(self) -> bool:
         """
-        Recarrega PipeWire para aplicar novas configurações.
-        Executa: systemctl --user restart pipewire
-        Returns:
-            bool: True se sucesso, False se falha
+        Recarrega o serviço PipeWire para aplicar as mudanças.
         """
         try:
+            # Previne o rate-limit do systemd dando reset no contador de falhas
+            subprocess.run(["systemctl", "--user", "reset-failed", "pipewire.service"], check=False)
+            
             result = subprocess.run(
                 PIPEWIRE_RELOAD_CMD,
                 timeout=5,
@@ -140,13 +140,13 @@ context.modules = [
             else:
                 logger.error(f"Erro ao recarregar PipeWire: {result.stderr}")
                 return False
-                
-        except subprocess.TimeoutExpired:
-            logger.error("Timeout ao recarregar PipeWire (>5s)")
-            return False
         except Exception as e:
             logger.error(f"Erro ao executar reload: {e}")
             return False
+
+    def reload_config(self) -> bool:
+        """Alias para compatibilidade."""
+        return self.reload_pipewire()
     
     def is_pipewire_running(self) -> bool:
         """Verifica se PipeWire está rodando."""

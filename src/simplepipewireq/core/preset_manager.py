@@ -69,18 +69,18 @@ class PresetManager:
         try:
             # Gerar conteúdo minimamente compatível com o parser
             # O parser espera formato Lua, então vamos fazer parecer Lua
-            lines = ["# Preset File"]
+            lines = ["// Preset File"]
             for freq, gain in gains_dict.items():
-                lines.append(f"{{ type = bq_peaking, freq = {freq}, gain = {gain:.1f}, q = 0.707 }}")
+                lines.append(f'{{ type = "bq_peaking", freq = {freq}, gain = {gain:.1f}, q = 0.707 }}')
             
             with open(filepath, 'w') as f:
                 f.write("\n".join(lines))
             
-            logger.info(f"Preset salvo: {name}")
+            logger.info(f"PresetManager: Arquivo '{filepath}' escrito com sucesso")
             self.list_presets() # Atualiza cache
             return True
         except Exception as e:
-            logger.error(f"Erro ao salvar preset {name}: {e}")
+            logger.error(f"PresetManager: Erro ao salvar preset {name}: {e}")
             return False
 
     def delete_preset(self, name: str) -> bool:

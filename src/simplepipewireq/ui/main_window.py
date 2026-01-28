@@ -33,13 +33,22 @@ class MainWindow(Adw.ApplicationWindow):
         self.set_title(APP_NAME)
         self.set_default_size(WINDOW_WIDTH, WINDOW_HEIGHT)
         
-        # Toolbar / Header
-        header = Adw.HeaderBar()
-        self.set_titlebar(header)
+        # Gerenciar Tema Dark corretamente no Libadwaita
+        style_manager = Adw.StyleManager.get_default()
+        style_manager.set_color_scheme(Adw.ColorScheme.PREFER_DARK)
         
-        # Main Layout
+        # O Libadwaita AdwApplicationWindow já tem um HeaderBar interno gerenciado pelo Adw.ToolbarView.
+        # Para um design limpo e moderno, vamos usar o Adw.ToolbarView como root.
+        
+        toolbar_view = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        toolbar_view.add_top_bar(header)
+        
+        self.set_content(toolbar_view)
+        
+        # Main Layout (dentro do ToolbarView)
         root_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        self.set_content(root_box)
+        toolbar_view.set_content(root_box)
         
         # Preset Toolbar
         preset_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -94,12 +103,21 @@ class MainWindow(Adw.ApplicationWindow):
         
         for i, freq in enumerate(FREQUENCIES):
             slider = EQSlider(freq)
-            slider.connect_value_changed(lambda s, val, idx=i: self.on_slider_changed(s, idx))
+            # Atualiza ganhos internos para salvar no preset_manager enquanto move
+            slider.connect_value_changed(lambda s, val, idx=i: self.on_slider_moving(s, idx))
+            # O Reload do PipeWire ocorre agora no input_finished (mouse solto)
+            slider.connect_input_finished(lambda s, val, idx=i: self.on_slider_done(s, idx))
             self.sliders.append(slider)
             self.slider_grid.append(slider)
             
         scroll.set_child(self.slider_grid)
         root_box.append(scroll)
+        
+        # Guia para o Usuário
+        self.info_banner = Adw.Banner()
+        self.info_banner.set_title("Selecione 'SimplePipeWireEQ' nas configurações de som para ativar.")
+        self.info_banner.set_revealed(True)
+        root_box.append(self.info_banner)
         
         # Status Bar
         self.status_bar = Gtk.Label(label="Pronto")
@@ -125,19 +143,21 @@ class MainWindow(Adw.ApplicationWindow):
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
-    def on_slider_changed(self, slider, band_index):
+    def on_slider_moving(self, slider, band_index):
+        """Atualiza ganhos internos enquanto move, mas não recarrega PW."""
         value = slider.get_value()
         freq = FREQUENCIES[band_index]
         self.gains[freq] = value
-        
-        # Debounce reload to avoid spamming systemctl
-        if self._reload_timer:
-            GLib.source_remove(self._reload_timer)
-        
-        self._reload_timer = GLib.timeout_add(150, self._do_reload)
+
+    def on_slider_done(self, slider, band_index):
+        """Recarrega PipeWire quando o usuário solta o slider."""
+        self._do_reload()
 
     def _do_reload(self):
-        self._reload_timer = None
+        # Limpar o timer se existisse
+        if self._reload_timer:
+            GLib.source_remove(self._reload_timer)
+            self._reload_timer = None
         
         # Salvar config temporária
         self.config_manager.write_config("temp.conf", self.gains)
@@ -187,35 +207,33 @@ class MainWindow(Adw.ApplicationWindow):
         self._do_reload()
 
     def on_save_preset(self, button):
-        # Dialog para nome do preset
-        self.save_dialog = Adw.MessageDialog(
-            transient_for=self,
+        # Usando Adw.AlertDialog (moderno)
+        dialog = Adw.AlertDialog(
             heading="Salvar Preset",
             body="Digite o nome para o seu preset:"
         )
         
-        entry = Gtk.Entry()
-        entry.set_placeholder_text("Ex: Meu Rock")
-        entry.set_margin_top(10)
-        self.save_dialog.set_extra_child(entry)
+        self.preset_entry = Gtk.Entry()
+        self.preset_entry.set_placeholder_text("Ex: Meu Rock")
+        self.preset_entry.set_activates_default(True) # Enter no entry executa o botão default
+        dialog.set_extra_child(self.preset_entry)
         
-        self.save_dialog.add_response("cancel", "Cancelar")
-        self.save_dialog.add_response("save", "Salvar")
-        self.save_dialog.set_default_response("save")
-        self.save_dialog.set_close_response("cancel")
+        dialog.add_response("cancel", "Cancelar")
+        dialog.add_response("save", "Salvar")
+        dialog.set_default_response("save")
+        dialog.set_close_response("cancel")
         
-        def response_cb(dialog, response):
-            if response == "save":
-                name = entry.get_text().strip()
+        def on_response(d, res, *args):
+            if res == "save":
+                name = self.preset_entry.get_text().strip()
+                logger.info(f"Interface: Solicitando salvamento de preset '{name}'")
                 if self.preset_manager.save_preset(name, self.gains):
                     self.refresh_preset_list()
                     self.update_status(f"Preset '{name}' salvo")
                 else:
                     self.update_status("Erro ao salvar preset (nome inválido?)")
-            dialog.destroy()
             
-        self.save_dialog.connect("response", response_cb)
-        self.save_dialog.present()
+        dialog.choose(self, None, on_response)
 
     def on_delete_preset(self, button):
         selected_idx = self.preset_dropdown.get_selected()
@@ -224,8 +242,7 @@ class MainWindow(Adw.ApplicationWindow):
             
         name = self.preset_model.get_string(selected_idx)
         
-        dialog = Adw.MessageDialog(
-            transient_for=self,
+        dialog = Adw.AlertDialog(
             heading="Deletar Preset?",
             body=f"Tem certeza que deseja deletar o preset '{name}'?"
         )
@@ -233,15 +250,13 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.add_response("delete", "Deletar")
         dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
         
-        def response_cb(d, res):
+        def on_response(d, res, *args):
             if res == "delete":
                 if self.preset_manager.delete_preset(name):
                     self.refresh_preset_list()
                     self.update_status(f"Preset '{name}' deletado")
-            d.destroy()
             
-        dialog.connect("response", response_cb)
-        dialog.present()
+        dialog.choose(self, None, on_response)
 
     def on_reset(self, button):
         for slider in self.sliders:
