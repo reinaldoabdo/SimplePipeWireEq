@@ -24,7 +24,8 @@ class PresetManager:
             return []
 
         for file in CONFIG_DIR.glob("*.conf"):
-            if file == TEMP_CONF or file == PIPEWIRE_CONFIG_FILE:
+            # Ignorar arquivos de sistema e temporários
+            if file.name in ["temp.conf", "pipewire.conf", "99-simplepipewireq.conf"]:
                 continue
             presets.append(file.stem)
         
@@ -69,9 +70,9 @@ class PresetManager:
         try:
             # Gerar conteúdo minimamente compatível com o parser
             # O parser espera formato Lua, então vamos fazer parecer Lua
-            lines = ["// Preset File"]
+            lines = ["# Preset File"]
             for freq, gain in gains_dict.items():
-                lines.append(f'{{ type = "bq_peaking", freq = {freq}, gain = {gain:.1f}, q = 0.707 }}')
+                lines.append(f'{{ "type": "bq_peaking", "freq": {freq}, "gain": {gain:.1f}, "q": 0.707 }}')
             
             with open(filepath, 'w') as f:
                 f.write("\n".join(lines))

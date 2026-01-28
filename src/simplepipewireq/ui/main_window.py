@@ -1,4 +1,5 @@
 import threading
+import logging
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
@@ -10,6 +11,8 @@ from simplepipewireq.core.config_manager import ConfigManager
 from simplepipewireq.core.pipewire_manager import PipeWireManager
 from simplepipewireq.core.preset_manager import PresetManager
 from simplepipewireq.ui.eq_slider import EQSlider
+
+logger = logging.getLogger(__name__)
 
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, *args, **kwargs):
@@ -85,6 +88,12 @@ class MainWindow(Adw.ApplicationWindow):
         btn_box.append(btn_save)
         btn_box.append(btn_delete)
         btn_box.append(btn_reset)
+        
+        btn_apply = Gtk.Button(label="Aplicar EQ", icon_name="emblem-ok-symbolic")
+        btn_apply.connect("clicked", self.on_apply_eq)
+        btn_apply.add_css_class("suggested-action")
+        btn_box.append(btn_apply)
+        
         preset_box.append(btn_box)
         
         root_box.append(preset_box)
@@ -103,10 +112,8 @@ class MainWindow(Adw.ApplicationWindow):
         
         for i, freq in enumerate(FREQUENCIES):
             slider = EQSlider(freq)
-            # Atualiza ganhos internos para salvar no preset_manager enquanto move
-            slider.connect_value_changed(lambda s, val, idx=i: self.on_slider_moving(s, idx))
-            # O Reload do PipeWire ocorre agora no input_finished (mouse solto)
-            slider.connect_input_finished(lambda s, val, idx=i: self.on_slider_done(s, idx))
+            # Atualiza ganhos internos e agenda reload com debounce
+            slider.connect_value_changed(lambda s, val, idx=i: self.on_slider_changed(s, idx))
             self.sliders.append(slider)
             self.slider_grid.append(slider)
             
@@ -115,7 +122,7 @@ class MainWindow(Adw.ApplicationWindow):
         
         # Guia para o Usuário
         self.info_banner = Adw.Banner()
-        self.info_banner.set_title("Selecione 'SimplePipeWireEQ' nas configurações de som para ativar.")
+        self.info_banner.set_title("Ajuste os sliders e clique 'Aplicar EQ'. Selecione 'SimplePipeWireEQ' como saída de som.")
         self.info_banner.set_revealed(True)
         root_box.append(self.info_banner)
         
@@ -143,42 +150,43 @@ class MainWindow(Adw.ApplicationWindow):
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
-    def on_slider_moving(self, slider, band_index):
-        """Atualiza ganhos internos enquanto move, mas não recarrega PW."""
+    def on_slider_changed(self, slider, band_index):
+        """Atualiza ganhos internos sem recarregar PipeWire."""
         value = slider.get_value()
         freq = FREQUENCIES[band_index]
         self.gains[freq] = value
+        self.update_status("Ajuste pendente - clique 'Aplicar EQ' para ativar")
 
-    def on_slider_done(self, slider, band_index):
-        """Recarrega PipeWire quando o usuário solta o slider."""
+    def on_apply_eq(self, button):
+        """Aplica os ajustes de EQ ao PipeWire (reinicia o serviço)."""
         self._do_reload()
 
     def _do_reload(self):
-        # Limpar o timer se existisse
-        if self._reload_timer:
-            GLib.source_remove(self._reload_timer)
-            self._reload_timer = None
+        print(f"DEBUG: Aplicando configuração de equalizador...")
+        self._reload_timer = None
         
-        # Salvar config temporária
+        # Salvar config temporária para persistência entre sessões do app
         self.config_manager.write_config("temp.conf", self.gains)
         
         # Gerar config PipeWire
         if not self.pipewire_manager.generate_pipewire_config(self.gains):
             self.update_status("Erro ao gerar configuração PipeWire")
-            return
+            return False
             
-        # Reload em thread
+        # Reload em thread para não travar a UI
         self.update_status("Aplicando ajustes...")
         thread = threading.Thread(target=self._reload_pipewire_async)
         thread.start()
-        return False # Stop timer
+        return False # Cancela o timeout do GLib
 
     def _reload_pipewire_async(self):
         success = self.pipewire_manager.reload_config()
         if success:
             GLib.idle_add(self.update_status, "Equalizador aplicado")
+            print("DEBUG: PipeWire recarregado com sucesso.")
         else:
             GLib.idle_add(self.update_status, "Falha ao recarregar PipeWire")
+            print("DEBUG: Erro ao recarregar PipeWire.")
 
     def on_load_preset(self, dropdown, param):
         selected_idx = dropdown.get_selected()
@@ -224,9 +232,10 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.set_close_response("cancel")
         
         def on_response(d, res, *args):
+            print(f"DEBUG: Resposta do diálogo de salvamento: {res}")
             if res == "save":
                 name = self.preset_entry.get_text().strip()
-                logger.info(f"Interface: Solicitando salvamento de preset '{name}'")
+                print(f"DEBUG: Tentando salvar preset '{name}'")
                 if self.preset_manager.save_preset(name, self.gains):
                     self.refresh_preset_list()
                     self.update_status(f"Preset '{name}' salvo")

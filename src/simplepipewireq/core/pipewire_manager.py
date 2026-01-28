@@ -61,27 +61,28 @@ class PipeWireManager:
                 # Formatar ganho como float com 1 casa decimal
                 gain_str = f"{gain:.1f}"
                 filters_lua.append(
-                    f'{{ type = "bq_peaking", freq = {freq}, gain = {gain_str}, q = 0.707 }}'
+                    f'{{ type = bq_peaking, freq = {freq}, gain = {gain_str}, q = 0.707 }}'
                 )
             
             filters_str = ",\n                                ".join(filters_lua)
             
-            # Template Lua (SPA-JSON format)
-            lua_content = f"""// SimplePipeWireEQ - Configuração de Equalizador Paramétrico
-// Gerada automaticamente pela aplicação
+            # Template com param_eq em modo stereo nativo (1 nó, 2 canais)
+            # Portas do param_eq: "In 1", "In 2", "Out 1", "Out 2"
+            lua_content = f"""# SimplePipeWireEQ - Configuração de Equalizador Paramétrico
+# Gerada automaticamente pela aplicação
 
 context.modules = [
     {{
-        name = "libpipewire-module-filter-chain"
+        name = libpipewire-module-filter-chain
         args = {{
             node.description = "SimplePipeWireEQ Equalizer Sink"
-            media.name = "SimplePipeWireEQ Equalizer Sink"
+            media.name       = "SimplePipeWireEQ Equalizer Sink"
             filter.graph = {{
                 nodes = [
                     {{
-                        type = builtin
-                        name = eq
-                        label = param_eq
+                        type   = builtin
+                        name   = eq
+                        label  = param_eq
                         config = {{
                             filters = [
                                 {filters_str}
@@ -89,19 +90,20 @@ context.modules = [
                         }}
                     }}
                 ]
-                links = []
+                inputs  = [ "eq:In 1" "eq:In 2" ]
+                outputs = [ "eq:Out 1" "eq:Out 2" ]
             }}
             capture.props = {{
-                node.name = "effect_input.simplepipewireq"
-                media.class = "Audio/Sink"
-                audio.channels = 2
-                audio.position = [ FL FR ]
+                node.name       = "effect_input.simplepipewireq"
+                media.class     = Audio/Sink
+                audio.channels  = 2
+                audio.position  = [ FL FR ]
             }}
             playback.props = {{
-                node.name = "effect_output.simplepipewireq"
-                node.passive = true
-                audio.channels = 2
-                audio.position = [ FL FR ]
+                node.name       = "effect_output.simplepipewireq"
+                node.passive    = true
+                audio.channels  = 2
+                audio.position  = [ FL FR ]
             }}
         }}
     }}
@@ -142,6 +144,9 @@ context.modules = [
                 return False
         except Exception as e:
             logger.error(f"Erro ao executar reload: {e}")
+            # Tentar restaurar o áudio básico se tudo falhar
+            subprocess.run(["systemctl", "--user", "reset-failed", "pipewire.service"], check=False)
+            subprocess.run(["systemctl", "--user", "restart", "pipewire.service"], check=False)
             return False
 
     def reload_config(self) -> bool:
@@ -181,8 +186,8 @@ context.modules = [
                 content = f.read()
             
             gains = {}
-            # Regex para extrair frequência e ganho
-            pattern = r'type = bq_peaking, freq = (\d+), gain = ([-\d.]+)'
+            # Regex ultra-flexível para JSON ou Lua (suporta aspas nas chaves e valores, e : ou =)
+            pattern = r'"?type"?\s*[:=]\s*"?bq_peaking"?,\s*"?freq"?\s*[:=]\s*(\d+),\s*"?gain"?\s*[:=]\s*([-\d.]+)'
             matches = re.findall(pattern, content)
             
             if not matches:
