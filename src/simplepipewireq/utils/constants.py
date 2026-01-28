@@ -21,7 +21,7 @@ PIPEWIRE_RELOAD_CMD = ["systemctl", "--user", "restart", "pipewire"]
 PIPEWIRE_STATUS_CMD = ["systemctl", "--user", "is-active", "pipewire"]
 
 # UI
-WINDOW_WIDTH = 700
+WINDOW_WIDTH = 770
 WINDOW_HEIGHT = 600
 APP_NAME = "SimplePipeWireEQ"
 APP_VERSION = "1.0.0"

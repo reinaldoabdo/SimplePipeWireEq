@@ -1,3 +1,5 @@
+# EM DESENVOLVIMENTO - NÃO USAR - PARA ESTUDO.
+
 # SimplePipeWireEQ
 
 Minimalist 10-band parametric equalizer for PipeWire on Linux.
