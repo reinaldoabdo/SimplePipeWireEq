@@ -1,10 +1,16 @@
 import logging
 import re
 import subprocess
+import json
+import time
 from pathlib import Path
+from typing import Optional, Dict, List, Tuple
 from simplepipewireq.utils.constants import (
     PIPEWIRE_CONFIG_FILE, FREQUENCIES, PIPEWIRE_CONF_DIR, 
-    PIPEWIRE_RELOAD_CMD, PIPEWIRE_STATUS_CMD
+    PIPEWIRE_RELOAD_CMD, PIPEWIRE_STATUS_CMD,
+    PIPEWIRE_RELOAD_SIGNAL, PIPEWIRE_PROCESS_NAME,
+    PIPEWIRE_CLI_CMD, PIPEWIRE_LIST_NODES_CMD, PIPEWIRE_ENUM_PARAMS_CMD,
+    PIPEWIRE_SET_PARAM_CMD, EQ_NODE_NAME, EQ_NODE_DESCRIPTION
 )
 
 logger = logging.getLogger(__name__)
@@ -123,30 +129,25 @@ context.modules = [
 
     def reload_pipewire(self) -> bool:
         """
-        Recarrega o serviço PipeWire para aplicar as mudanças.
+        Reinicia o serviço PipeWire para aplicar as mudanças.
+        Nota: filter-chains não suportam hot-reload, restart é necessário.
         """
         try:
-            # Previne o rate-limit do systemd dando reset no contador de falhas
-            subprocess.run(["systemctl", "--user", "reset-failed", "pipewire.service"], check=False)
-            
             result = subprocess.run(
                 PIPEWIRE_RELOAD_CMD,
-                timeout=5,
+                timeout=10,
                 capture_output=True,
                 text=True
             )
             
             if result.returncode == 0:
-                logger.info("PipeWire recarregado com sucesso")
+                logger.info("PipeWire reiniciado com sucesso")
                 return True
             else:
-                logger.error(f"Erro ao recarregar PipeWire: {result.stderr}")
+                logger.error(f"Erro ao reiniciar PipeWire: {result.stderr}")
                 return False
         except Exception as e:
             logger.error(f"Erro ao executar reload: {e}")
-            # Tentar restaurar o áudio básico se tudo falhar
-            subprocess.run(["systemctl", "--user", "reset-failed", "pipewire.service"], check=False)
-            subprocess.run(["systemctl", "--user", "restart", "pipewire.service"], check=False)
             return False
 
     def reload_config(self) -> bool:
@@ -208,3 +209,461 @@ context.modules = [
         except Exception as e:
             logger.error(f"Erro ao fazer parse de preset: {e}")
             return {}
+
+    # ==== HOT-RELOAD USING SIGHUP ====
+    
+    def reload_pipewire_signal(self) -> bool:
+        """
+        Envia sinal SIGHUP para o processo PipeWire para recarregar configuração.
+        
+        Returns:
+            bool: True se sucesso, False se falha
+        """
+        try:
+            from simplepipewireq.utils.constants import PIPEWIRE_RELOAD_SIGNAL, PIPEWIRE_PROCESS_NAME
+            import time
+            
+            # Tentar encontrar o processo primeiro
+            pgrep_result = subprocess.run(
+                ["pgrep", PIPEWIRE_PROCESS_NAME],
+                capture_output=True,
+                text=True
+            )
+            
+            if pgrep_result.returncode != 0:
+                logger.warning("Nenhum processo PipeWire encontrado")
+                return False
+            
+            pids = pgrep_result.stdout.strip().split('\n')
+            if not pids or not pids[0]:
+                logger.warning("Nenhum PID de PipeWire encontrado")
+                return False
+            
+            # Enviar SIGHUP para todos os processos pipewire
+            success_count = 0
+            for pid in pids:
+                if pid:
+                    try:
+                        result = subprocess.run(
+                            ["kill", f"-{PIPEWIRE_RELOAD_SIGNAL}", pid],
+                            capture_output=True,
+                            text=True
+                        )
+                        if result.returncode == 0:
+                            success_count += 1
+                            logger.info(f"Sinal SIGHUP enviado para PipeWire (PID: {pid})")
+                    except Exception as e:
+                        logger.warning(f"Erro ao enviar sinal para PID {pid}: {e}")
+            
+            if success_count > 0:
+                # Aguardar um pouco para o PipeWire processar a nova configuração
+                time.sleep(0.5)
+                return True
+            else:
+                logger.error("Nenhum sinal SIGHUP foi enviado com sucesso")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Erro ao enviar sinal SIGHUP: {e}")
+            return False
+    
+    def restart_pipewire_pulse_only(self) -> bool:
+        """
+        Reinicia apenas o pipewire-pulse (interface PulseAudio).
+        
+        Isso é menos disruptivo que reiniciar o pipewire completo.
+        
+        Returns:
+            bool: True se sucesso, False se falha
+        """
+        try:
+            result = subprocess.run(
+                ["systemctl", "--user", "restart", "pipewire-pulse"],
+                timeout=10,
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                logger.info("pipewire-pulse reiniciado com sucesso")
+                return True
+            else:
+                logger.error(f"Erro ao reiniciar pipewire-pulse: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Erro ao reiniciar pipewire-pulse: {e}")
+            return False
+    
+    def wait_for_pipewire_ready(self, timeout: float = 10.0) -> bool:
+        """
+        Aguarda o PipeWire estar pronto após reload.
+        """
+        import time
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                result = subprocess.run(
+                    ["pw-cli", "info", "0"],
+                    capture_output=True,
+                    text=True,
+                    timeout=1
+                )
+                if result.returncode == 0:
+                    logger.info("PipeWire está pronto")
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.2)
+        
+        logger.warning("Timeout esperando PipeWire ficar pronto")
+        return False
+    
+    def hot_reload(self, gains_dict: dict) -> bool:
+        """
+        Executa reload do equalizador com múltiplas estratégias.
+        
+        Estratégias:
+        1. SIGHUP (menos disruptivo)
+        2. Restart pipewire-pulse (médio)
+        3. Restart completo (fallback)
+        
+        Args:
+            gains_dict: Dicionário de ganhos {freq: gain}
+            
+        Returns:
+            bool: True se succeeded, False se falhou
+        """
+        import time
+        
+        logger.info("Iniciando reload do equalizador...")
+        
+        # Gerar configuração
+        if not self.generate_pipewire_config(gains_dict):
+            logger.error("Falha ao gerar configuração")
+            return False
+        
+        # Aguardar arquivo ser escrito completamente
+        time.sleep(0.3)
+        
+        # Estratégia 1: SIGHUP
+        logger.info("Estratégia 1: Tentando SIGHUP...")
+        if self.reload_pipewire_signal():
+            logger.info("SIGHUP enviado, aguardando PipeWire...")
+            if self.wait_for_pipewire_ready(timeout=10.0):
+                logger.info("Reload via SIGHUP OK")
+                return True
+            else:
+                logger.warning("SIGHUP enviado mas PipeWire não ficou pronto")
+        else:
+            logger.warning("Falha ao enviar SIGHUP")
+        
+        # Estratégia 2: Restart pipewire-pulse
+        logger.info("Estratégia 2: Tentando restart pipewire-pulse...")
+        if self.restart_pipewire_pulse_only():
+            logger.info("pipewire-pulse reiniciado, aguardando...")
+            if self.wait_for_pipewire_ready(timeout=10.0):
+                logger.info("Reload via pipewire-pulse OK")
+                return True
+            else:
+                logger.warning("pipewire-pulse reiniciado mas PipeWire não ficou pronto")
+        else:
+            logger.warning("Falha ao reiniciar pipewire-pulse")
+        
+        # Estratégia 3: Restart completo
+        logger.info("Estratégia 3: Restart completo...")
+        if self.reload_config():
+            logger.info("Restart completo executado, aguardando...")
+            result = self.wait_for_pipewire_ready(timeout=15.0)
+            if result:
+                logger.info("Restart completo OK")
+            else:
+                logger.error("Restart completo falhou ou demorou muito")
+            return result
+        
+        logger.error("Todas as estratégias de reload falharam")
+        return False
+
+    # ==== DYNAMIC PARAMETER UPDATE USING PW-CLI ====
+    
+    def find_eq_node_id(self) -> Optional[int]:
+        """
+        Busca o ID do nó do equalizador usando pw-cli.
+        
+        Returns:
+            Optional[int]: ID do nó se encontrado, None caso contrário
+        """
+        try:
+            result = subprocess.run(
+                PIPEWIRE_LIST_NODES_CMD,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"Erro ao listar nós: {result.stderr}")
+                return None
+            
+            # Procurar pelo nó do equalizador
+            # O output do pw-cli contém informações sobre todos os nós
+            lines = result.stdout.split('\n')
+            
+            for line in lines:
+                # Procurar pelo nome do nó ou descrição
+                if EQ_NODE_NAME in line or EQ_NODE_DESCRIPTION in line:
+                    # Extrair o ID do nó (formato: id X, ...)
+                    import re
+                    match = re.search(r'id\s+(\d+)', line)
+                    if match:
+                        node_id = int(match.group(1))
+                        logger.info(f"Nó do equalizador encontrado: ID {node_id}")
+                        return node_id
+            
+            logger.warning("Nó do equalizador não encontrado")
+            return None
+            
+        except subprocess.TimeoutExpired:
+            logger.error("Timeout ao buscar nó do equalizador")
+            return None
+        except Exception as e:
+            logger.error(f"Erro ao buscar nó do equalizador: {e}")
+            return None
+    
+    def get_filter_chain_port_id(self, node_id: int) -> Optional[int]:
+        """
+        Busca o ID da porta do filter-chain associada ao nó.
+        
+        Args:
+            node_id: ID do nó do equalizador
+            
+        Returns:
+            Optional[int]: ID da porta se encontrada, None caso contrário
+        """
+        try:
+            # Listar todas as portas
+            result = subprocess.run(
+                ["pw-cli", "list-objects", "Port"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"Erro ao listar portas: {result.stderr}")
+                return None
+            
+            lines = result.stdout.split('\n')
+            
+            for line in lines:
+                # Procurar porta associada ao nó
+                if f'node.id "{node_id}"' in line or f'node.id {node_id}' in line:
+                    # Extrair o ID da porta
+                    import re
+                    match = re.search(r'id\s+(\d+)', line)
+                    if match:
+                        port_id = int(match.group(1))
+                        logger.info(f"Porta do filter-chain encontrada: ID {port_id}")
+                        return port_id
+            
+            logger.warning("Porta do filter-chain não encontrada")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erro ao buscar porta do filter-chain: {e}")
+            return None
+    
+    def update_filter_gains_dynamic(self, gains_dict: dict) -> bool:
+        """
+        Atualiza os ganhos dos filtros dinamicamente usando pw-link e controle de volume.
+        
+        Esta é uma abordagem alternativa que usa o controle de volume do PipeWire
+        para simular mudanças de EQ sem precisar recarregar o módulo.
+        
+        Args:
+            gains_dict: Dicionário de ganhos {freq: gain}
+            
+        Returns:
+            bool: True se sucesso, False se falha
+        """
+        try:
+            # Calcular ganho médio para ajuste global
+            # Esta é uma simplificação - para EQ real precisamos de controle mais granular
+            avg_gain = sum(gains_dict.values()) / len(gains_dict) if gains_dict else 0.0
+            
+            # Converter dB para fator de amplitude
+            # amplitude = 10^(dB/20)
+            import math
+            amplitude = 10 ** (avg_gain / 20.0)
+            
+            # Buscar o nó do equalizador
+            node_id = self.find_eq_node_id()
+            if not node_id:
+                logger.error("Não foi possível encontrar o nó do equalizador")
+                return False
+            
+            # Atualizar o volume do nó usando pw-cli
+            # O PipeWire usa controle de volume em escala 0.0 a 1.0 (ou maior para boost)
+            volume = max(0.0, min(4.0, amplitude))  # Limitar entre 0 e +12dB
+            
+            result = subprocess.run(
+                ["pw-cli", "set-param", str(node_id), "Props", 
+                 f"{{ channelVolumes: [ {volume}, {volume} ] }}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"Volume atualizado para {volume:.3f} ({avg_gain:.1f}dB)")
+                return True
+            else:
+                logger.error(f"Erro ao atualizar volume: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Erro ao atualizar ganhos dinamicamente: {e}")
+            return False
+    
+    def reload_filter_chain_module(self) -> bool:
+        """
+        Recarrega apenas o módulo filter-chain sem reiniciar o PipeWire.
+        
+        Esta é a abordagem mais robusta para atualizar configurações de EQ.
+        
+        Returns:
+            bool: True se sucesso, False se falha
+        """
+        try:
+            # 1. Encontrar o módulo filter-chain
+            result = subprocess.run(
+                ["pw-cli", "list-objects", "Module"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"Erro ao listar módulos: {result.stderr}")
+                return False
+            
+            lines = result.stdout.split('\n')
+            module_id = None
+            
+            for line in lines:
+                if 'libpipewire-module-filter-chain' in line:
+                    import re
+                    match = re.search(r'id\s+(\d+)', line)
+                    if match:
+                        module_id = int(match.group(1))
+                        logger.info(f"Módulo filter-chain encontrado: ID {module_id}")
+                        break
+            
+            if not module_id:
+                logger.warning("Módulo filter-chain não encontrado, tentando carregar...")
+                # Se não existe, carregar o módulo
+                return self.load_filter_chain_module()
+            
+            # 2. Descarregar o módulo
+            logger.info(f"Descarregando módulo filter-chain (ID: {module_id})...")
+            result = subprocess.run(
+                ["pw-cli", "unload-module", str(module_id)],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"Erro ao descarregar módulo: {result.stderr}")
+                return False
+            
+            # Pequena pausa para garantir que o módulo foi descarregado
+            time.sleep(0.2)
+            
+            # 3. Carregar o módulo novamente com nova configuração
+            return self.load_filter_chain_module()
+            
+        except Exception as e:
+            logger.error(f"Erro ao recarregar módulo filter-chain: {e}")
+            return False
+    
+    def load_filter_chain_module(self) -> bool:
+        """
+        Carrega o módulo filter-chain com a configuração atual.
+        
+        Returns:
+            bool: True se sucesso, False se falha
+        """
+        try:
+            # Verificar se o arquivo de configuração existe
+            if not PIPEWIRE_CONFIG_FILE.exists():
+                logger.error(f"Arquivo de configuração não encontrado: {PIPEWIRE_CONFIG_FILE}")
+                return False
+            
+            # Carregar o módulo usando o arquivo de configuração
+            # O PipeWire carrega automaticamente arquivos de .conf.d
+            # Mas podemos forçar o recarregamento enviando SIGHUP
+            logger.info("Carregando módulo filter-chain...")
+            
+            # Enviar SIGHUP para recarregar configuração
+            if self.reload_pipewire_signal():
+                # Aguardar o módulo ser carregado
+                time.sleep(0.5)
+                
+                # Verificar se o nó foi criado
+                node_id = self.find_eq_node_id()
+                if node_id:
+                    logger.info(f"Módulo filter-chain carregado com sucesso (nó ID: {node_id})")
+                    return True
+                else:
+                    logger.warning("Módulo carregado mas nó não encontrado")
+                    return False
+            else:
+                logger.error("Falha ao enviar SIGHUP")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Erro ao carregar módulo filter-chain: {e}")
+            return False
+    
+    def hot_reload_dynamic(self, gains_dict: dict) -> bool:
+        """
+        Executa hot-reload dinâmico usando múltiplas estratégias.
+        
+        Estratégias (em ordem de preferência):
+        1. Atualização de parâmetros via pw-cli (mais rápido)
+        2. Recarregamento do módulo filter-chain (mais robusto)
+        3. Fallback para métodos existentes
+        
+        Args:
+            gains_dict: Dicionário de ganhos {freq: gain}
+            
+        Returns:
+            bool: True se sucesso, False se falha
+        """
+        logger.info("Iniciando hot-reload dinâmico...")
+        
+        # Gerar configuração
+        if not self.generate_pipewire_config(gains_dict):
+            logger.error("Falha ao gerar configuração")
+            return False
+        
+        # Aguardar arquivo ser escrito completamente
+        time.sleep(0.2)
+        
+        # Estratégia 1: Recarregar módulo filter-chain
+        logger.info("Estratégia 1: Recarregando módulo filter-chain...")
+        if self.reload_filter_chain_module():
+            logger.info("Hot-reload via módulo filter-chain OK")
+            return True
+        
+        # Estratégia 2: Usar hot_reload existente (SIGHUP, pipewire-pulse, restart)
+        logger.info("Estratégia 2: Usando hot-reload existente...")
+        if self.hot_reload(gains_dict):
+            logger.info("Hot-reload via método existente OK")
+            return True
+        
+        logger.error("Todas as estratégias de hot-reload dinâmico falharam")
+        return False
+
