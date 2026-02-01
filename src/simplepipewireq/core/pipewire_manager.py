@@ -530,59 +530,45 @@ context.modules = [
         """
         Recarrega apenas o módulo filter-chain sem reiniciar o PipeWire.
         
-        Esta é a abordagem mais robusta para atualizar configurações de EQ.
+        IMPORTANTE: Esta versão usa apenas SIGHUP para recarregar a configuração
+        sem destruir o nó, preservando o ID do dispositivo. Isso evita que
+        aplicativos como o Spotify percam a referência para o dispositivo.
         
         Returns:
             bool: True se sucesso, False se falha
         """
         try:
-            # 1. Encontrar o módulo filter-chain
-            result = subprocess.run(
-                ["pw-cli", "list-objects", "Module"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            # Verificar se o nó do equalizador existe
+            node_id = self.find_eq_node_id()
             
-            if result.returncode != 0:
-                logger.error(f"Erro ao listar módulos: {result.stderr}")
-                return False
-            
-            lines = result.stdout.split('\n')
-            module_id = None
-            
-            for line in lines:
-                if 'libpipewire-module-filter-chain' in line:
-                    import re
-                    match = re.search(r'id\s+(\d+)', line)
-                    if match:
-                        module_id = int(match.group(1))
-                        logger.info(f"Módulo filter-chain encontrado: ID {module_id}")
-                        break
-            
-            if not module_id:
-                logger.warning("Módulo filter-chain não encontrado, tentando carregar...")
+            if not node_id:
+                logger.warning("Nó do equalizador não encontrado, tentando carregar...")
                 # Se não existe, carregar o módulo
                 return self.load_filter_chain_module()
             
-            # 2. Descarregar o módulo
-            logger.info(f"Descarregando módulo filter-chain (ID: {module_id})...")
-            result = subprocess.run(
-                ["pw-cli", "unload-module", str(module_id)],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            logger.info(f"Nó do equalizador encontrado (ID: {node_id}), recarregando configuração...")
             
-            if result.returncode != 0:
-                logger.error(f"Erro ao descarregar módulo: {result.stderr}")
+            # Usar SIGHUP para recarregar a configuração sem destruir o nó
+            # Isso preserva o ID do nó e evita que aplicativos percam a referência
+            if self.reload_pipewire_signal():
+                # Aguardar o PipeWire processar a nova configuração
+                time.sleep(0.5)
+                
+                # Verificar se o nó ainda existe (deve existir com o mesmo ID)
+                new_node_id = self.find_eq_node_id()
+                if new_node_id == node_id:
+                    logger.info(f"✓ Configuração recarregada com sucesso (nó ID preservado: {node_id})")
+                    return True
+                elif new_node_id:
+                    logger.warning(f"⚠ Nó recriado com novo ID: {new_node_id} (antigo: {node_id})")
+                    # O nó foi recriado, mas ainda funciona
+                    return True
+                else:
+                    logger.error("✗ Nó do equalizador não encontrado após recarregamento")
+                    return False
+            else:
+                logger.error("✗ Falha ao enviar SIGHUP")
                 return False
-            
-            # Pequena pausa para garantir que o módulo foi descarregado
-            time.sleep(0.2)
-            
-            # 3. Carregar o módulo novamente com nova configuração
-            return self.load_filter_chain_module()
             
         except Exception as e:
             logger.error(f"Erro ao recarregar módulo filter-chain: {e}")
