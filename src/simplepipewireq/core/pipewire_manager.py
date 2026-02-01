@@ -31,6 +31,10 @@ class PipeWireManager:
         Returns:
             bool: True se sucesso, False se falha
         """
+        # Garantir que o módulo ALSA está carregado
+        if not self.ensure_alsa_module():
+            logger.warning("Não foi possível carregar módulo ALSA, continuando mesmo assim...")
+        
         # Criar ganhos padrão (todos em 0dB)
         default_gains = {freq: 0.0 for freq in FREQUENCIES}
         
@@ -387,6 +391,75 @@ context.modules = [
 
     # ==== DYNAMIC PARAMETER UPDATE USING PW-CLI ====
     
+    def is_alsa_module_loaded(self) -> bool:
+        """
+        Verifica se o módulo ALSA do PipeWire está carregado.
+        
+        Returns:
+            bool: True se carregado, False caso contrário
+        """
+        try:
+            result = subprocess.run(
+                ["pw-cli", "list-objects", "Module"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode != 0:
+                return False
+            
+            # Verificar se há algum módulo ALSA
+            return 'libpipewire-module-alsa' in result.stdout.lower()
+            
+        except Exception as e:
+            logger.error(f"Erro ao verificar módulo ALSA: {e}")
+            return False
+    
+    def load_alsa_module(self) -> bool:
+        """
+        Carrega o módulo ALSA do PipeWire.
+        
+        Returns:
+            bool: True se sucesso, False se falha
+        """
+        try:
+            logger.info("Carregando módulo ALSA do PipeWire...")
+            result = subprocess.run(
+                ["pw-cli", "load-module", "libpipewire-module-alsa"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                logger.info("✓ Módulo ALSA carregado com sucesso")
+                # Aguardar dispositivos serem criados
+                time.sleep(1.0)
+                return True
+            else:
+                logger.error(f"✗ Erro ao carregar módulo ALSA: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Erro ao carregar módulo ALSA: {e}")
+            return False
+    
+    def ensure_alsa_module(self) -> bool:
+        """
+        Garante que o módulo ALSA está carregado.
+        Se não estiver, tenta carregar.
+        
+        Returns:
+            bool: True se módulo está carregado ou foi carregado com sucesso
+        """
+        if self.is_alsa_module_loaded():
+            logger.info("Módulo ALSA já está carregado")
+            return True
+        
+        logger.warning("Módulo ALSA não está carregado, tentando carregar...")
+        return self.load_alsa_module()
+    
     def find_eq_node_id(self) -> Optional[int]:
         """
         Busca o ID do nó do equalizador usando pw-cli.
@@ -618,7 +691,7 @@ context.modules = [
         Executa hot-reload dinâmico usando múltiplas estratégias.
         
         Estratégias (em ordem de preferência):
-        1. Atualização de parâmetros via pw-cli (mais rápido)
+        1. Garantir que módulo ALSA está carregado
         2. Recarregamento do módulo filter-chain (mais robusto)
         3. Fallback para métodos existentes
         
@@ -629,6 +702,10 @@ context.modules = [
             bool: True se sucesso, False se falha
         """
         logger.info("Iniciando hot-reload dinâmico...")
+        
+        # Garantir que o módulo ALSA está carregado
+        if not self.ensure_alsa_module():
+            logger.warning("Módulo ALSA não está disponível, áudio pode não funcionar")
         
         # Gerar configuração
         if not self.generate_pipewire_config(gains_dict):
