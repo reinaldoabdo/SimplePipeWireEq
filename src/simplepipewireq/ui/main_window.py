@@ -158,7 +158,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.update_status("Ajuste pendente - clique 'Aplicar EQ' para ativar")
 
     def on_apply_eq(self, button):
-        """Aplica os ajustes de EQ ao PipeWire (reinicia o serviço)."""
+        """Aplica os ajustes de EQ ao PipeWire (usa hot-reload)."""
         self._do_reload()
 
     def _do_reload(self):
@@ -168,25 +168,26 @@ class MainWindow(Adw.ApplicationWindow):
         # Salvar config temporária para persistência entre sessões do app
         self.config_manager.write_config("temp.conf", self.gains)
         
-        # Gerar config PipeWire
-        if not self.pipewire_manager.generate_pipewire_config(self.gains):
-            self.update_status("Erro ao gerar configuração PipeWire")
-            return False
-            
-        # Reload em thread para não travar a UI
+        # Hot-reload em thread para não travar a UI
         self.update_status("Aplicando ajustes...")
-        thread = threading.Thread(target=self._reload_pipewire_async)
+        thread = threading.Thread(target=self._hot_reload_async)
         thread.start()
         return False # Cancela o timeout do GLib
 
-    def _reload_pipewire_async(self):
-        success = self.pipewire_manager.reload_config()
+    def _hot_reload_async(self):
+        """Executa hot-reload dinâmico em background."""
+        success = self.pipewire_manager.hot_reload_dynamic(self.gains)
         if success:
-            GLib.idle_add(self.update_status, "Equalizador aplicado")
-            print("DEBUG: PipeWire recarregado com sucesso.")
+            GLib.idle_add(self.update_status, "Equalizador aplicado (hot-reload dinâmico)")
+            print("DEBUG: Hot-reload dinâmico concluído com sucesso.")
         else:
-            GLib.idle_add(self.update_status, "Falha ao recarregar PipeWire")
-            print("DEBUG: Erro ao recarregar PipeWire.")
+            GLib.idle_add(self.update_status, "Falha no hot-reload dinâmico, tentando fallback...")
+            print("DEBUG: Hot-reload dinâmico falhou, usando fallback...")
+            # Fallback para reload completo
+            if self.pipewire_manager.reload_config():
+                GLib.idle_add(self.update_status, "Equalizador aplicado (fallback)")
+            else:
+                GLib.idle_add(self.update_status, "Falha ao aplicar equalizador")
 
     def on_load_preset(self, dropdown, param):
         selected_idx = dropdown.get_selected()
